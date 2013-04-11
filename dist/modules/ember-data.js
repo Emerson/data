@@ -1735,8 +1735,8 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     @private
   */
   fetchAll: function(type, array) {
-    var sinceToken = this.typeMapFor(type).sinceToken,
-        adapter = this.adapterForType(type);
+    var adapter = this.adapterForType(type),
+        sinceToken = this.typeMapFor(type).metadata.since;
 
     set(array, 'isUpdating', true);
 
@@ -1750,8 +1750,9 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
   /**
   */
-  sinceForType: function(type, sinceToken) {
-    this.typeMapFor(type).sinceToken = sinceToken;
+  metaForType: function(type, property, data) {
+    var target = this.typeMapFor(type).metadata;
+    set(target, property, data);
   },
 
   /**
@@ -2470,7 +2471,8 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
         {
           idToCid: {},
           clientIds: [],
-          recordArrays: []
+          recordArrays: [],
+          metadata: {}
       });
     }
   },
@@ -6340,11 +6342,11 @@ DS.Serializer = Ember.Object.extend({
 
   registerEnumTransform: function(type, objects) {
     var transform = {
-      deserialize: function(deserialized) {
-        return Ember.A(objects).objectAt(deserialized);
+      deserialize: function(serialized) {
+        return Ember.A(objects).objectAt(serialized);
       },
-      serialize: function(serialized) {
-        return Ember.EnumerableUtils.indexOf(objects, serialized);
+      serialize: function(deserialized) {
+        return Ember.EnumerableUtils.indexOf(objects, deserialized);
       },
       values: objects
     };
@@ -6702,6 +6704,9 @@ DS.JSONSerializer = DS.Serializer.extend({
       this.set('transforms', DS.JSONTransforms);
     }
 
+    this.sideloadMapping = Ember.Map.create();
+    this.metadataMapping = Ember.Map.create();
+
     this.configure({
       meta: 'meta',
       since: 'since'
@@ -6709,7 +6714,13 @@ DS.JSONSerializer = DS.Serializer.extend({
   },
 
   configure: function(type, configuration) {
+    var key;
+
     if (type && !configuration) {
+      for(key in type){
+        this.metadataMapping.set(get(type, key), key);
+      }
+
       return this._super(type);
     }
 
@@ -6909,12 +6920,18 @@ DS.JSONSerializer = DS.Serializer.extend({
   },
 
   extractMeta: function(loader, type, json) {
-    var meta = json[this.configOption(type, 'meta')], since;
-    if (!meta) { return; }
+    var meta = this.configOption(type, 'meta'),
+        data = json, key, property, value;
 
-    if (since = meta[this.configOption(type, 'since')]) {
-      loader.sinceForType(type, since);
+    if(meta && json[meta]){
+      data = json[meta];
     }
+
+    this.metadataMapping.forEach(function(property, key){
+      if(value = data[property]){
+        loader.metaForType(type, key, value);
+      }
+    });
   },
 
   extractEmbeddedType: function(relationship, data) {
@@ -6954,7 +6971,7 @@ DS.JSONSerializer = DS.Serializer.extend({
     for (var prop in json) {
       if (!json.hasOwnProperty(prop) ||
           prop === root ||
-          prop === this.configOption(type, 'meta')) {
+          !!this.metadataMapping.get(prop)) {
         continue;
       }
 
@@ -7102,8 +7119,8 @@ function loaderFor(store) {
       store.prematerialize(reference, prematerialized);
     },
 
-    sinceForType: function(type, since) {
-      store.sinceForType(type, since);
+    metaForType: function(type, property, data) {
+      store.metaForType(type, property, data);
     }
   };
 }
@@ -7195,7 +7212,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
         occupations: [{
           id: 345,
           title: "Tricycle Mechanic"
-        }]    
+        }]
       });
     ```
 
@@ -7225,12 +7242,12 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     For example, the `RESTAdapter` saves newly created records by
     making an Ajax request. When the server returns, the adapter
     calls didCreateRecord. If the server returns a response body,
-    it is passed as the payload. 
+    it is passed as the payload.
 
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} record
-    @param {any} payload 
+    @param {any} payload
   */
   didCreateRecord: function(store, type, record, payload) {
     store.didSaveRecord(record);
@@ -7251,7 +7268,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     Acknowledges that the adapter has finished creating several records.
 
     Your adapter should call this method from `createRecords` when it
-    has saved multiple created records to its persistent storage 
+    has saved multiple created records to its persistent storage
     received an acknowledgement.
 
     If the persistent storage returns a new payload in response to the
@@ -7261,7 +7278,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} record
-    @param {any} payload 
+    @param {any} payload
   */
   didCreateRecords: function(store, type, records, payload) {
     records.forEach(function(record) {
@@ -7290,7 +7307,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} record
-    @param {any} payload 
+    @param {any} payload
   */
   didSaveRecord: function(store, type, record, payload) {
     store.didSaveRecord(record);
@@ -7323,7 +7340,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} record
-    @param {any} payload 
+    @param {any} payload
   */
   didUpdateRecord: function() {
     this.didSaveRecord.apply(this, arguments);
@@ -7342,14 +7359,14 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} record
-    @param {any} payload 
+    @param {any} payload
   */
   didDeleteRecord: function() {
     this.didSaveRecord.apply(this, arguments);
   },
 
   /**
-    Acknowledges that the adapter has finished updating or deleting 
+    Acknowledges that the adapter has finished updating or deleting
     multiple records.
 
     Your adapter should call this method from its `updateRecords` or
@@ -7362,7 +7379,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} records
-    @param {any} payload 
+    @param {any} payload
   */
   didSaveRecords: function(store, type, records, payload) {
     records.forEach(function(record) {
@@ -7388,7 +7405,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} records
-    @param {any} payload 
+    @param {any} payload
   */
   didUpdateRecords: function() {
     this.didSaveRecords.apply(this, arguments);
@@ -7407,7 +7424,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     @param {DS.Store} store
     @param {subclass of DS.Model} type
     @param {DS.Model} records
-    @param {any} payload 
+    @param {any} payload
   */
   didDeleteRecords: function() {
     this.didSaveRecords.apply(this, arguments);
@@ -7425,7 +7442,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
 
     @param {DS.Store} store
     @param {subclass of DS.Model} type
-    @param {any} payload 
+    @param {any} payload
     @param {String} id
   */
   didFindRecord: function(store, type, payload, id) {
@@ -7449,7 +7466,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
 
     @param {DS.Store} store
     @param {subclass of DS.Model} type
-    @param {any} payload 
+    @param {any} payload
   */
   didFindAll: function(store, type, payload) {
     var loader = DS.loaderFor(store),
@@ -7468,7 +7485,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
 
     @param {DS.Store} store
     @param {subclass of DS.Model} type
-    @param {any} payload 
+    @param {any} payload
     @param {DS.AdapterPopulatedRecordArray} recordArray
   */
   didFindQuery: function(store, type, payload, recordArray) {
@@ -7489,7 +7506,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
 
     @param {DS.Store} store
     @param {subclass of DS.Model} type
-    @param {any} payload 
+    @param {any} payload
   */
   didFindMany: function(store, type, payload) {
     var loader = DS.loaderFor(store);
@@ -7613,7 +7630,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
   },
 
   /**
-    A public method that allows you to register an enumerated 
+    A public method that allows you to register an enumerated
     type on your adapter.  This is useful if you want to utilize
     a text representation of an integer value.
 
@@ -7625,7 +7642,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
 
     You would then refer to the 'priority' DS.attr in your model:
     App.Task = DS.Model.extend({
-      priority: DS.attr('priority') 
+      priority: DS.attr('priority')
     });
 
     And lastly, you would set/get the text representation on your model instance,
@@ -7635,7 +7652,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     Server Response / Load:  { myTask: {priority: 0} }
 
     @param {String} type of the transform
-    @param {Array} array of String objects to use for the enumerated values.  
+    @param {Array} array of String objects to use for the enumerated values.
       This is an ordered list and the index values will be used for the transform.
   */
   registerEnumTransform: function(attributeType, objects) {
