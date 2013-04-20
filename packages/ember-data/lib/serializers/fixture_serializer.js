@@ -1,5 +1,17 @@
 require('ember-data/system/serializer');
 
+/**
+  @module data
+  @submodule data-serializers
+*/
+
+/**
+  @class FixtureSerializer
+  @constructor
+  @namespace DS
+  @extends DS.Serializer
+*/
+
 var get = Ember.get, set = Ember.set;
 
 DS.FixtureSerializer = DS.Serializer.extend({
@@ -30,18 +42,6 @@ DS.FixtureSerializer = DS.Serializer.extend({
     });
 
     hash[relationship.key] = ids;
-  },
-
-  /**
-    @private
-
-    Creates an empty hash that will be filled in by the hooks called from the
-    `serialize()` method.
-
-    @return {Object}
-  */
-  createSerializedForm: function() {
-    return {};
   },
 
   extract: function(loader, fixture, type, record) {

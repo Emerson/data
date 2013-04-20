@@ -1,9 +1,19 @@
 require('ember-data/system/serializer');
 require('ember-data/transforms/json_transforms');
 
-var get = Ember.get, set = Ember.set;
+/**
+  @module data
+  @submodule data-serializers
+*/
 
-var generatedId = 0;
+/**
+  @class JSONSerializer
+  @constructor
+  @namespace DS
+  @extends DS.Serializer
+*/
+
+var get = Ember.get, set = Ember.set;
 
 DS.JSONSerializer = DS.Serializer.extend({
   init: function() {
@@ -60,18 +70,6 @@ DS.JSONSerializer = DS.Serializer.extend({
   */
   addAttribute: function(hash, key, value) {
     hash[key] = value;
-  },
-
-  /**
-    @private
-
-    Creates an empty hash that will be filled in by the hooks called from the
-    `serialize()` method.
-
-    @return {Object}
-  */
-  createSerializedForm: function() {
-    return {};
   },
 
   extractAttribute: function(type, hash, attributeName) {
@@ -230,7 +228,7 @@ DS.JSONSerializer = DS.Serializer.extend({
 
   extractMeta: function(loader, type, json) {
     var meta = this.configOption(type, 'meta'),
-        data = json, key, property, value;
+        data = json, value;
 
     if(meta && json[meta]){
       data = json[meta];

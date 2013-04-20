@@ -10,3 +10,5 @@ tests/source/
 
 tests/ember-data-tests.js
 *gem
+
+docs/build/
