@@ -204,7 +204,7 @@ DS.OneToOneChange.maintainInvariant = function(options, store, childReference, k
     var child = store.recordForReference(childReference);
     var oldParent = get(child, key);
     if (oldParent){
-      var correspondingChange = DS.OneToOneChange.createChange(childReference, oldParent.get('reference'), store, {
+      var correspondingChange = DS.OneToOneChange.createChange(childReference, oldParent.get('_reference'), store, {
           parentType: options.parentType,
           hasManyName: options.hasManyName,
           changeType: "remove",
@@ -245,7 +245,7 @@ DS.OneToManyChange.createChange = function(childReference, parentReference, stor
       firstRecordName:  key
   });
 
-  store.addRelationshipChangeFor(childReference, key, parentReference, null, change);
+  store.addRelationshipChangeFor(childReference, key, parentReference, change.getSecondRecordName(), change);
 
 
   return change;
@@ -258,13 +258,13 @@ DS.OneToManyChange.maintainInvariant = function(options, store, childReference, 
   if (options.changeType === "add" && child) {
     var oldParent = get(child, key);
     if (oldParent){
-      var correspondingChange = DS.OneToManyChange.createChange(childReference, oldParent.get('reference'), store, {
+      var correspondingChange = DS.OneToManyChange.createChange(childReference, oldParent.get('_reference'), store, {
           parentType: options.parentType,
           hasManyName: options.hasManyName,
           changeType: "remove",
           key: options.key
         });
-      store.addRelationshipChangeFor(childReference, key, options.parentReference , null, correspondingChange);
+      store.addRelationshipChangeFor(childReference, key, options.parentReference, correspondingChange.getSecondRecordName(), correspondingChange);
       correspondingChange.sync();
     }
   }
@@ -277,10 +277,7 @@ DS.OneToManyChange.ensureSameTransaction = function(changes){
     records.addObject(change.getFirstRecord());
   });
 
-  var transaction = DS.Transaction.ensureSameTransaction(records);
-  forEach(changes, function(change){
-    change.transaction = transaction;
- });
+  return DS.Transaction.ensureSameTransaction(records);
 };
 
 DS.RelationshipChange.prototype = {
@@ -315,14 +312,9 @@ DS.RelationshipChange.prototype = {
     var childReference = this.childReference,
         belongsToName = this.getFirstRecordName(),
         hasManyName = this.getSecondRecordName(),
-        store = this.store,
-        transaction;
+        store = this.store;
 
     store.removeRelationshipChangeFor(childReference, belongsToName, this.parentReference, hasManyName, this.changeType);
-
-    if (transaction = this.transaction) {
-      transaction.relationshipBecameClean(this);
-    }
   },
 
   /** @private */
@@ -414,8 +406,7 @@ DS.RelationshipChangeAdd.prototype.sync = function() {
   //Ember.assert("You specified a hasMany (" + hasManyName + ") on " + (!belongsToName && (newParent || oldParent || this.lastParent).constructor) + " but did not specify an inverse belongsTo on " + child.constructor, belongsToName);
   //Ember.assert("You specified a belongsTo (" + belongsToName + ") on " + child.constructor + " but did not specify an inverse hasMany on " + (!hasManyName && (newParent || oldParent || this.lastParentRecord).constructor), hasManyName);
 
-  var transaction = this.ensureSameTransaction();
-  transaction.relationshipBecameDirty(this);
+  this.ensureSameTransaction();
 
   this.callChangeEvents();
 
@@ -459,8 +450,7 @@ DS.RelationshipChangeRemove.prototype.sync = function() {
   //Ember.assert("You specified a hasMany (" + hasManyName + ") on " + (!belongsToName && (newParent || oldParent || this.lastParent).constructor) + " but did not specify an inverse belongsTo on " + child.constructor, belongsToName);
   //Ember.assert("You specified a belongsTo (" + belongsToName + ") on " + child.constructor + " but did not specify an inverse hasMany on " + (!hasManyName && (newParent || oldParent || this.lastParentRecord).constructor), hasManyName);
 
-  var transaction = this.ensureSameTransaction(firstRecord, secondRecord, secondRecordName, firstRecordName);
-  transaction.relationshipBecameDirty(this);
+  this.ensureSameTransaction(firstRecord, secondRecord, secondRecordName, firstRecordName);
 
   this.callChangeEvents();
 
