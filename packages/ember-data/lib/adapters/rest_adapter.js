@@ -1,7 +1,6 @@
 require("ember-data/core");
 require('ember-data/system/adapter');
 require('ember-data/serializers/rest_serializer');
-/*global jQuery*/
 
 /**
   @module data
@@ -9,6 +8,11 @@ require('ember-data/serializers/rest_serializer');
 */
 
 var get = Ember.get, set = Ember.set;
+
+function rejectionHandler(reason) {
+  Ember.Logger.error(reason, reason.message);
+  throw reason;
+}
 
 /**
   The REST adapter allows your store to communicate with an HTTP server by
@@ -128,11 +132,11 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root), "POST", {
       data: data
     }).then(function(json){
-      Ember.run(adapter, 'didCreateRecord', store, type, record, json);
+      adapter.didCreateRecord(store, type, record, json);
     }, function(xhr) {
       adapter.didError(store, type, record, xhr);
       throw xhr;
-    });
+    }).then(null, rejectionHandler);
   },
 
   createRecords: function(store, type, records) {
@@ -154,8 +158,8 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root), "POST", {
       data: data
     }).then(function(json) {
-      Ember.run(adapter, 'didCreateRecords', store, type, records, json);
-    });
+      adapter.didCreateRecords(store, type, records, json);
+    }).then(null, rejectionHandler);
   },
 
   updateRecord: function(store, type, record) {
@@ -171,11 +175,11 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root, id), "PUT",{
       data: data
     }).then(function(json){
-      Ember.run(adapter, 'didUpdateRecord', store, type, record, json);
+      adapter.didUpdateRecord(store, type, record, json);
     }, function(xhr) {
       adapter.didError(store, type, record, xhr);
       throw xhr;
-    });
+    }).then(null, rejectionHandler);
   },
 
   updateRecords: function(store, type, records) {
@@ -200,8 +204,8 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root, "bulk"), "PUT", {
       data: data
     }).then(function(json) {
-      Ember.run(adapter, 'didUpdateRecords', store, type, records, json);
-    });
+      adapter.didUpdateRecords(store, type, records, json);
+    }).then(null, rejectionHandler);
   },
 
   deleteRecord: function(store, type, record) {
@@ -212,11 +216,11 @@ DS.RESTAdapter = DS.Adapter.extend({
     adapter = this;
 
     return this.ajax(this.buildURL(root, id), "DELETE").then(function(json){
-      Ember.run(adapter, 'didDeleteRecord', store, type, record, json);
+      adapter.didDeleteRecord(store, type, record, json);
     }, function(xhr){
       adapter.didError(store, type, record, xhr);
       throw xhr;
-    });
+    }).then(null, rejectionHandler);
   },
 
   deleteRecords: function(store, type, records) {
@@ -226,9 +230,9 @@ DS.RESTAdapter = DS.Adapter.extend({
       return this._super(store, type, records);
     }
 
-    root = this.rootForType(type),
-    plural = this.pluralize(root),
-    serializer = get(this, 'serializer'),
+    root = this.rootForType(type);
+    plural = this.pluralize(root);
+    serializer = get(this, 'serializer');
     adapter = this;
 
     data = {};
@@ -238,17 +242,20 @@ DS.RESTAdapter = DS.Adapter.extend({
       data[plural].push(serializer.serializeId( get(record, 'id') ));
     });
 
-    return this.ajax(this.buildURL(root, 'bulk'), "DELETE", { data: data }).then(function(json){
-      Ember.run(adapter, 'didDeleteRecords', store, type, records, json);
-    });
+    return this.ajax(this.buildURL(root, 'bulk'), "DELETE", {
+      data: data
+    }).then(function(json){
+      adapter.didDeleteRecords(store, type, records, json);
+    }).then(null, rejectionHandler);
   },
 
   find: function(store, type, id) {
     var root = this.rootForType(type), adapter = this;
 
-    return this.ajax(this.buildURL(root, id), "GET").then(function(json){
-      return Ember.run(adapter,'didFindRecord', store, type, json, id);
-    });
+    return this.ajax(this.buildURL(root, id), "GET").
+      then(function(json){
+        adapter.didFindRecord(store, type, json, id);
+    }).then(null, rejectionHandler);
   },
 
   findAll: function(store, type, since) {
@@ -260,8 +267,8 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root), "GET",{
       data: this.sinceQuery(since)
     }).then(function(json) {
-      Ember.run(adapter,'didFindAll', store, type, json);
-    });
+      adapter.didFindAll(store, type, json);
+    }).then(null, rejectionHandler);
   },
 
   findQuery: function(store, type, query, recordArray) {
@@ -271,10 +278,8 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root), "GET", {
       data: query
     }).then(function(json){
-      Ember.run(adapter, function(){
-        this.didFindQuery(store, type, json, recordArray);
-      });
-    });
+      adapter.didFindQuery(store, type, json, recordArray);
+    }).then(null, rejectionHandler);
   },
 
   findMany: function(store, type, ids, owner) {
@@ -286,8 +291,8 @@ DS.RESTAdapter = DS.Adapter.extend({
     return this.ajax(this.buildURL(root), "GET", {
       data: {ids: ids}
     }).then(function(json) {
-      return Ember.run(adapter,'didFindMany', store, type, json);
-    });
+      adapter.didFindMany(store, type, json);
+    }).then(null, rejectionHandler);
   },
 
   /**
@@ -295,7 +300,7 @@ DS.RESTAdapter = DS.Adapter.extend({
 
     This method serializes a list of IDs using `serializeId`
 
-    @returns {Array} an array of serialized IDs
+    @return {Array} an array of serialized IDs
   */
   serializeIds: function(ids) {
     var serializer = get(this, 'serializer');
@@ -318,22 +323,30 @@ DS.RESTAdapter = DS.Adapter.extend({
   },
 
   ajax: function(url, type, hash) {
-    try {
+    var adapter = this;
+
+    return new Ember.RSVP.Promise(function(resolve, reject) {
       hash = hash || {};
       hash.url = url;
       hash.type = type;
       hash.dataType = 'json';
-      hash.context = this;
+      hash.context = adapter;
 
       if (hash.data && type !== 'GET') {
         hash.contentType = 'application/json; charset=utf-8';
         hash.data = JSON.stringify(hash.data);
       }
 
-      return Ember.RSVP.resolve(jQuery.ajax(hash));
-    } catch (error) {
-      return Ember.RSVP.reject(error);
-    }
+      hash.success = function(json) {
+        Ember.run(null, resolve, json);
+      };
+
+      hash.error = function(jqXHR, textStatus, errorThrown) {
+        Ember.run(null, reject, jqXHR);
+      };
+
+      Ember.$.ajax(hash);
+    });
   },
 
   url: "",

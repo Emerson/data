@@ -10,9 +10,10 @@ DS.RelationshipChange = function(options) {
   this.secondRecordReference = options.secondRecordReference;
   this.secondRecordKind = options.secondRecordKind;
   this.secondRecordName = options.secondRecordName;
-  this.store = options.store;
-  this.committed = {};
   this.changeType = options.changeType;
+  this.store = options.store;
+
+  this.committed = {};
 };
 
 DS.RelationshipChangeAdd = function(options){
@@ -300,7 +301,7 @@ DS.RelationshipChange.prototype = {
   /**
     Get the name of the relationship on the belongsTo side.
 
-    @returns {String}
+    @return {String}
   */
   getFirstRecordName: function() {
     var name = this.firstRecordName;
@@ -319,8 +320,6 @@ DS.RelationshipChange.prototype = {
 
   /** @private */
   getByReference: function(reference) {
-    var store = this.store;
-
     // return null or undefined if the original reference was null or undefined
     if (!reference) { return reference; }
 

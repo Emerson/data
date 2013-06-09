@@ -22,6 +22,7 @@ var retrieveFromCurrentState = Ember.computed(function(key, value) {
   @extends Ember.Object
   @constructor
 */
+
 DS.Model = Ember.Object.extend(Ember.Evented, LoadPromise, {
   isLoading: retrieveFromCurrentState,
   isLoaded: retrieveFromCurrentState,
@@ -125,7 +126,7 @@ DS.Model = Ember.Object.extend(Ember.Evented, LoadPromise, {
 
   data: Ember.computed(function() {
     if (!this._data) {
-      this.materializeData();
+      this.setupData();
     }
 
     return this._data;
@@ -177,19 +178,6 @@ DS.Model = Ember.Object.extend(Ember.Evented, LoadPromise, {
 
   didChangeData: function() {
     this.send('didChangeData');
-  },
-
-  /**
-    Reload the record from the adapter.
-
-    This will only work if the record has already finished loading
-    and has not yet been modified (`isLoaded` but not `isDirty`,
-    or `isSaving`).
-
-    @method reload
-  */
-  reload: function() {
-    this.send('reloadRecord');
   },
 
   deleteRecord: function() {
@@ -284,7 +272,7 @@ DS.Model = Ember.Object.extend(Ember.Evented, LoadPromise, {
     Ember.run.once(this, this.updateRecordArrays);
   },
 
-  setupData: function(prematerialized) {
+  setupData: function() {
     this._data = {
       attributes: {},
       belongsTo: {},
@@ -389,17 +377,54 @@ DS.Model = Ember.Object.extend(Ember.Evented, LoadPromise, {
   becameInFlight: function() {
   },
 
-  // FOR USE BY THE BASIC ADAPTER
+  /**
+    @private
 
-  save: function() {
+  */
+  resolveOn: function(successEvent) {
     var model = this;
+
+    return new Ember.RSVP.Promise(function(resolve, reject) {
+      function success() {
+        this.off('becameError', error);
+        this.off('becameInvalid', error);
+        resolve(this);
+      }
+      function error() {
+        this.off(successEvent, success);
+        reject(this);
+      }
+
+      model.one(successEvent, success);
+      model.one('becameError', error);
+      model.one('becameInvalid', error);
+    });
+  },
+
+  /**
+    Save the record.
+
+    @method save
+  */
+  save: function() {
     this.get('store').scheduleSave(this);
 
-    return new Ember.RSVP.Promise(function(resolve, reject){
-      model.one('didCommit', function() {
-        resolve(this);
-      });
-    });
+    return this.resolveOn('didCommit');
+  },
+
+  /**
+    Reload the record from the adapter.
+
+    This will only work if the record has already finished loading
+    and has not yet been modified (`isLoaded` but not `isDirty`,
+    or `isSaving`).
+
+    @method reload
+  */
+  reload: function() {
+    this.send('reloadRecord');
+
+    return this.resolveOn('didReload');
   },
 
   // FOR USE DURING COMMIT PROCESS
@@ -457,7 +482,23 @@ var storeAlias = function(methodName) {
 };
 
 DS.Model.reopenClass({
-  isLoaded: storeAlias('recordIsLoaded'),
+
+  /** @private
+    Alias DS.Model's `create` method to `_create`. This allows us to create DS.Model
+    instances from within the store, but if end users accidentally call `create()`
+    (instead of `createRecord()`), we can raise an error.
+  */
+  _create: DS.Model.create,
+
+  /** @private
+
+    Override the class' `create()` method to raise an error. This prevents end users
+    from inadvertently calling `create()` instead of `createRecord()`. The store is
+    still able to create instances by calling the `_create()` method.
+  */
+  create: function() {
+    throw new Ember.Error("You should not call `create` on a model. Instead, call `createRecord` with the attributes you would like to set.");
+  },
 
   /**
     See {{#crossLink "DS.Store/find:method"}}`DS.Store.find()`{{/crossLink}}.
@@ -493,12 +534,6 @@ DS.Model.reopenClass({
     @return {DS.FilteredRecordArray}
   */
   filter: storeAlias('filter'),
-
-  _create: DS.Model.create,
-
-  create: function() {
-    throw new Ember.Error("You should not call `create` on a model. Instead, call `createRecord` with the attributes you would like to set.");
-  },
 
   /**
     See {{#crossLink "DS.Store/createRecord:method"}}`DS.Store.createRecord()`{{/crossLink}}.

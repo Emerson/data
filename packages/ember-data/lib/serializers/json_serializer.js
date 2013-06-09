@@ -91,6 +91,10 @@ DS.JSONSerializer = DS.Serializer.extend({
     }
   },
 
+  extractEmbeddedData: function(hash, key) {
+    return hash[key];
+  },
+
   extractHasMany: function(type, hash, key) {
     return hash[key];
   },
@@ -329,9 +333,11 @@ DS.JSONSerializer = DS.Serializer.extend({
 
     @param {String} name the association name to convert into a key
 
-    @returns {String} the key
+    @return {String} the key
   */
-  keyForPolymorphicId: Ember.K,
+  keyForPolymorphicId: function(key){
+    return key;
+  },
 
   /**
     A hook you can use in your serializer subclass to customize
@@ -339,17 +345,19 @@ DS.JSONSerializer = DS.Serializer.extend({
 
     @param {String} name the association name to convert into a key
 
-    @returns {String} the key
+    @return {String} the key
   */
-  keyForPolymorphicType: Ember.K,
+  keyForPolymorphicType: function(key){
+    return this.keyForPolymorphicId(key) + '_type';
+  },
 
   /**
     A hook you can use in your serializer subclass to customize
     the key used to store the type of a record of an embedded polymorphic association.
 
-    By default, this method returns 'type'.
+    By default, this method return 'type'.
 
-    @returns {String} the key
+    @return {String} the key
   */
   keyForEmbeddedType: function() {
     return 'type';
@@ -367,7 +375,7 @@ DS.JSONSerializer = DS.Serializer.extend({
     `user_group`.
 
     @param {DS.Model subclass} type
-    @returns {String} name of the root element
+    @return {String} name of the root element
   */
   rootForType: function(type) {
     var typeString = type.toString();
@@ -386,7 +394,7 @@ DS.JSONSerializer = DS.Serializer.extend({
     The default root name for a particular sideloaded type.
 
     @param {DS.Model subclass} type
-    @returns {String} name of the root element
+    @return {String} name of the root element
   */
   defaultSideloadRootForType: function(type) {
     return this.pluralize(this.rootForType(type));

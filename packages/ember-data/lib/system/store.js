@@ -103,13 +103,6 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     The init method registers this store as the default if none is specified.
   */
   init: function() {
-    // Enforce API revisioning. See BREAKING_CHANGES.md for more.
-    var revision = get(this, 'revision');
-
-    if (revision !== DS.CURRENT_API_REVISION && !Ember.ENV.TESTING) {
-      throw new Error("Error: The Ember Data library has had breaking API changes since the last time you updated the library. Please review the list of breaking changes at https://github.com/emberjs/data/blob/master/BREAKING_CHANGES.md, then update your store's `revision` property to " + DS.CURRENT_API_REVISION);
-    }
-
     if (!get(DS, 'defaultStore') || get(this, 'isDefaultStore')) {
       set(DS, 'defaultStore', this);
     }
@@ -189,7 +182,10 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     @property {DS.Adapter|String}
   */
   adapter: Ember.computed(function(){
-    Ember.debug("A custom DS.Adapter was not provided as the 'Adapter' property of your application's Store. The default (DS.RESTAdapter) will be used.");
+    if (!Ember.testing) {
+      Ember.debug("A custom DS.Adapter was not provided as the 'Adapter' property of your application's Store. The default (DS.RESTAdapter) will be used.");
+    }
+
     return 'DS.RESTAdapter';
   }).property(),
 
@@ -515,7 +511,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
     This method returns a record for a given record refeence.
 
-    If no record for the reference has yet been materialzed, this method will
+    If no record for the reference has yet been materialized, this method will
     materialize a new `DS.Model` instance. This allows adapters to eagerly load
     large amounts of data into the store, and avoid incurring the cost of
     creating models until they are requested.
@@ -689,8 +685,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
     var unloadedReferences = this.unloadedReferences(references),
         manyArray = this.recordArrayManager.createManyArray(type, Ember.A(references)),
-        loadingRecordArrays = this.loadingRecordArrays,
-        reference, clientId, i, l;
+        reference, i, l;
 
     // Start the decrementing counter on the ManyArray at the number of
     // records we need to load from the adapter
@@ -923,9 +918,26 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     }
   },
 
-  // .................
-  // . BASIC ADAPTER .
-  // .................
+  // ..............
+  // . PERSISTING .
+  // ..............
+
+  /**
+    This method delegates saving to the store's implicit
+    transaction.
+
+    Calling this method is essentially a request to persist
+    any changes to records that were not explicitly added to
+    a transaction.
+  */
+  save: function() {
+    once(this, 'commitDefaultTransaction');
+  },
+  commit: Ember.aliasMethod('save'),
+
+  commitDefaultTransaction: function() {
+    get(this, 'defaultTransaction').commit();
+  },
 
   scheduleSave: function(record) {
     get(this, 'currentTransaction').add(record);
@@ -935,33 +947,6 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
   flushSavedRecords: function() {
     get(this, 'currentTransaction').commit();
     set(this, 'currentTransaction', this.transaction());
-  },
-
-  // ..............
-  // . PERSISTING .
-  // ..............
-
-  /**
-    This method schedule a save of records in the default transaction.
-
-    Calling this method is essentially a request to persist
-    any changes to records that were not explicitly added to
-    a transaction.
-  */
-  save: function() {
-    once(this, 'commit');
-  },
-
-  /**
-    This method delegates committing to the store's implicit
-    transaction.
-
-    Calling this method is essentially a request to persist
-    any changes to records that were not explicitly added to
-    a transaction.
-  */
-  commit: function() {
-    get(this, 'defaultTransaction').commit();
   },
 
   /**
